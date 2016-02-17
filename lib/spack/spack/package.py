@@ -49,6 +49,7 @@ import spack.fetch_strategy as fs
 import spack.hooks
 import spack.mirror
 import spack.repository
+import spack.binary_distribution
 import spack.url
 import spack.util.web
 from StringIO import StringIO
@@ -835,22 +836,23 @@ class Package(object):
 
     def do_install(self,
                    keep_prefix=False,  keep_stage=False, ignore_deps=False,
-                   skip_patch=False, verbose=False, make_jobs=None, fake=False):
+                   skip_patch=False, verbose=False, make_jobs=None, fake=False,install_policy="build"):
         """Called by commands to install a package and its dependencies.
 
         Package implementations should override install() to describe
         their build process.
 
         Args:
-        keep_prefix -- Keep install prefix on failure. By default, destroys it.
-        keep_stage  -- By default, stage is destroyed only if there are no
-                       exceptions during build. Set to True to keep the stage
-                       even with exceptions.
-        ignore_deps -- Do not install dependencies before installing this package.
-        fake        -- Don't really build -- install fake stub files instead.
-        skip_patch  -- Skip patch stage of build if True.
-        verbose     -- Display verbose build output (by default, suppresses it)
-        make_jobs   -- Number of make jobs to use for install.  Default is ncpus.
+        keep_prefix    -- Keep install prefix on failure. By default, destroys it.
+        keep_stage     -- By default, stage is destroyed only if there are no
+                          exceptions during build. Set to True to keep the stage
+                          even with exceptions.
+        ignore_deps    -- Do not install dependencies before installing this package.
+        install_policy -- Whether to download a pre-compiled package or build from scratch
+        fake           -- Don't really build -- install fake stub files instead.
+        skip_patch     -- Skip patch stage of build if True.
+        verbose        -- Display verbose build output (by default, suppresses it)
+        make_jobs      -- Number of make jobs to use for install.  Default is ncpus.
         """
         if not self.spec.concrete:
             raise ValueError("Can only install concrete packages.")
@@ -871,7 +873,24 @@ class Package(object):
         if not ignore_deps:
             self.do_install_dependencies(
                 keep_prefix=keep_prefix, keep_stage=keep_stage, ignore_deps=ignore_deps,
-                fake=fake, skip_patch=skip_patch, verbose=verbose, make_jobs=make_jobs)
+                fake=fake, skip_patch=skip_patch, verbose=verbose, install_policy=install_policy,
+                make_jobs=make_jobs)
+
+        start_time = time.time()
+        print install_policy
+        if install_policy != "build":
+            spack.binary_distribution.prepare()
+            spack.binary_distribution.download_tarball(self)
+        elif not fake:
+            if not skip_patch:
+                self.do_patch()
+            else:
+                self.do_stage()
+
+        # create the install directory.  The install layout
+        # handles this in case so that it can use whatever
+        # package naming scheme it likes.
+        spack.install_layout.create_install_directory(self.spec)
 
         # Set parallelism before starting build.
         self.make_jobs = make_jobs
@@ -895,7 +914,11 @@ class Package(object):
                 # the directory is created.
                 spack.hooks.pre_install(self)
 
-                if fake:
+                # Set up process's build environment before running install.
+                if install_policy != "build":
+                  spack.binary_distribution.extract_tarball(self)
+                  spack.binary_distribution.relocate(self)
+                elif fake:
                     self.do_fake_install()
                 else:
                     # Do the real install in the source directory.
@@ -916,6 +939,11 @@ class Package(object):
                          # Annotate ProcessErrors with the location of the build log.
                          e.build_log = log_path
                          raise e
+
+                # Move build log into install directory on success
+                if install_policy == "build" and not fake:
+                    log_install_path = spack.install_layout.build_log_path(self.spec)
+                    install(log_path, log_install_path)
 
                      # Ensure that something was actually installed.
                      self.sanity_check_prefix()
