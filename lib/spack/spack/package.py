@@ -886,11 +886,6 @@ class Package(object):
             else:
                 self.do_stage()
 
-        # create the install directory.  The install layout
-        # handles this in case so that it can use whatever
-        # package naming scheme it likes.
-        spack.install_layout.create_install_directory(self.spec)
-
         # Set parallelism before starting build.
         self.make_jobs = make_jobs
 
@@ -941,8 +936,8 @@ class Package(object):
 
                 # Move build log into install directory on success
                 if install_policy == "build" and not fake:
-                    log_install_path = spack.install_layout.build_log_path(self.spec)
-                    install(log_path, log_install_path)
+                     log_install_path = spack.install_layout.build_log_path(self.spec)
+                     install(log_path, log_install_path)
 
                      # Ensure that something was actually installed.
                      self.sanity_check_prefix()
