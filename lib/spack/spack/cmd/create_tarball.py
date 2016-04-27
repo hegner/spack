@@ -24,7 +24,7 @@
 ##############################################################################
 import argparse
 import os
-
+import sys
 import llnl.util.tty as tty
 
 import spack
@@ -43,12 +43,25 @@ def create_tarball(parser, args):
     if not args.packages:
         tty.die("tarball creation requires at least one package argument")
 
-    specs = spack.cmd.parse_specs(args.packages, concretize=True)
+    specs = spack.cmd.parse_specs(args.packages)
     for spec in specs:
-        package = spack.repo.get(spec)
+        # ----------- Make sure the spec only resolves to ONE thing
+        q = spack.installed_db.query(spec)
+        if len(q) == 0:
+            tty.die("No installed packages match spec %s" % spec)
+
+        if len(q) > 1:
+            tty.error("Multiple matches for spec %s.  Choose one:" % spec)
+            for s in q:
+                sys.stderr.write(s.format())
+                sys.stderr.write("\n")
+
+            sys.exit(1)
+        package = q[0]
+#        package = spack.repo.get(spec)
         tar = which('tar', required=True)
-        tarfile = tarball_name(spec)
+        tarfile = tarball_name(package)
         dirname = os.path.dirname(package.prefix)
         basename = os.path.basename(package.prefix)
-        tar("--directory=%s" %dirname, "-cvf", tarfile, basename)
+        tar("--directory=%s" %dirname, "-cvzf", tarfile, basename)
 
