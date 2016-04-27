@@ -63,5 +63,5 @@ def create_tarball(parser, args):
         tarfile = tarball_name(package)
         dirname = os.path.dirname(package.prefix)
         basename = os.path.basename(package.prefix)
-        tar("--directory=%s" %dirname, "-cvf", tarfile, basename)
+        tar("--directory=%s" %dirname, "-cvzf", tarfile, basename)
 
